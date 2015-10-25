@@ -1,0 +1,71 @@
+---
+title: "Machine_Learning"
+output: html_document
+---
+#Predicting how well participants exercised using random forests
+##By: Pooja Pancholi
+
+##Summary
+The purpose of this document it to take personal workout data and create a prediction model based on workout movements of 6 participants. The model will predict how well a person is working out based on movements of their arms, forearms, belt, and dumbbells. The 6 participants were asked to perform unilateral dumbbell biceps curls using five different maneuvers, which were represented under the variable, classe. Classe was separated into 5 factor levels, A represents working out exactly according to specification (the correct way), B represents throwing the elbows to the front (incorrect), C represents lifting the dumbbell only halfway (incorrect), D represents lowering the dumbbell only halfway (incorrect), and E represents throwing the hips in the front. Measurements were taken to see how participants moved in the x,y,z-plane for each different maneuver, which is what will be used to build the prediction algorithm. The data was collected by a research and development team from Groupware@les. More information regarding the data can be found at the following link :http://groupware.les.inf.puc-rio.br/har. 
+
+##Downloading the Data and loading necessary packages
+```{r}
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+library(caret)
+library(randomForest)
+``` 
+
+##Cleaning the Data
+Only data collected from the accelerometer will be relevant in the prediction model. When looking at the data,it was clear that many of the variances had NAs. While this could have been dealt with by imputing the data, I felt that the variances may not have been necessary in building a prediction model. My assumption was that they were the variances on the total acceleration for each part measured (arms, forearms, etc.), but this can be calculated manually, if necessary.
+```{r}
+training1 <- cbind(training[grep("accel" , colnames(training))], training["classe"])
+testing1 <- cbind(testing[grep("accel", colnames(testing))], testing["user_name"])
+training1 <- training1[-grep("var", colnames(training1))]
+testing1 <- testing1[-grep("var", colnames(testing1))]
+```
+
+##Creating the Prediction algorithm
+I've decided to use a random forest to create the predictive model. However, when looking at the testing set, it became apparent that that set did not contain a classe variable, indicating that another testing set would be necessary to get a better sampling error of the prediction model. 
+```{r}
+inTrain <- createDataPartition(y = training1$classe, p = .3, list = F)
+training2 <- training1[inTrain,]
+testing2 <- training1[-inTrain,]
+randomf <- train(classe~., data = training2, method = "rf", trControl=trainControl(method = "cv", number = 5), prox =T, allowParallel = T)
+randomf$finalModel
+```
+I used a cross-validation method with 5 fold within the algorithm to have a more accurate prediction model. Since there were 500 trees, it would not be possible to show all of them, however, I did show the first 10 below. More on that to follow. The confusion matrix shows extremely small error rates for classes A,E, and C. B and D still have small error rates, but they could be smaller.
+```{r}
+head(getTree(randomf$finalModel), 10)
+plot(varImp(randomf), main = "Importance of Variables")
+```
+Note that the important variables are the same as the initial splitting variables of the trees. Because there are so many variable factor levels, there are a large number of tree splits, allowing for a more accurate model. 
+```{r}
+randomf
+```
+The overall accuracy for this model is 90.4%, which is very high. 
+
+##Predicting on test set
+I will use the set testing2 to check how well the prediction model on an outside test. 
+```{r}
+pred <- predict(randomf,testing2)
+testing2$predRight <- pred == testing2$classe
+confusionMatrix(pred, testing2$classe)
+```
+On the test set, there is 93% accuracy, which is even higher than the training set. The confusion matrix also shows more numbers matching up the prediction and actual values. 
+
+##Out-of-Sample error rate
+```{r}
+1 - sum(diag(table(pred, testing2$classe)))/sum(table(pred, testing2$classe))
+``` 
+The out of sample error rate it `{r} 1 - sum(diag(table(pred, testing2$classe)))/sum(table(pred, testing2$classe)) `, which is fairly small. The estimated out-of-sample error was calculated in the randomf function and was found to be 0.089. Therefore, the actual error rate was a little smaller than the estimate. 
+
+##Checking original test function
+ 
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
